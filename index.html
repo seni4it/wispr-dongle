@@ -55,6 +55,7 @@
   </div>
 
   <div class="card hide" id="typeCard">
+    <div class="hint" style="margin:-2px 0 -2px">Connected to <b id="devname">your dongle</b></div>
     <div class="lang">
       <button id="it" class="act sec">🇮🇹 Italian</button>
       <button id="us" class="sec">🇺🇸 English (US)</button>
@@ -66,9 +67,10 @@
     </div>
     <button id="send" class="send">Send ⌨️</button>
     <div class="row">
-      <button id="disconnect" class="sec">Disconnect</button>
       <button id="changepw" class="sec">Change password</button>
+      <button id="rename" class="sec">Rename dongle</button>
     </div>
+    <button id="disconnect" class="sec">Disconnect</button>
     <div class="hint">Tip: on the computer, set your keyboard layout to <b>Italian</b> so accents (à è é) come out right. Use the English button only on US-layout machines.</div>
   </div>
 
@@ -103,13 +105,28 @@ async function writeLine(str){
   }
 }
 
+async function pickDevice(){
+  // Prefer the dongle you used last time (auto-reconnect, no chooser, and you
+  // never grab someone else's in a shared room). Fall back to the chooser.
+  const wantId = localStorage.getItem("wispr_dev_id");
+  if(wantId && navigator.bluetooth.getDevices){
+    try{
+      const known = await navigator.bluetooth.getDevices();
+      const match = known.find(d=>d.id===wantId);
+      if(match) return match;
+    }catch(e){}
+  }
+  // Chooser: filter by the WisprDongle service so custom names still show up.
+  return await navigator.bluetooth.requestDevice({ filters:[{services:[SVC]}] });
+}
+
 async function connect(){
   if(!navigator.bluetooth){ alert("This browser has no Web Bluetooth. Use Chrome on Android."); return; }
   try{
     setStatus("Connecting…","wait");
-    device = await navigator.bluetooth.requestDevice({
-      filters:[{namePrefix:"Wispr"}], optionalServices:[SVC]
-    });
+    device = await pickDevice();
+    localStorage.setItem("wispr_dev_id", device.id);
+    $("devname").textContent = device.name || "your dongle";
     device.addEventListener("gattserverdisconnected", onDisconnect);
     const gatt = await device.gatt.connect();
     const svc = await gatt.getPrimaryService(SVC);
@@ -135,6 +152,7 @@ function onNotify(ev){
   else if(msg==="BAD"){ setStatus("Wrong password","off"); showTyping(false); localStorage.removeItem("wispr_pw"); alert("Wrong password. Try again."); }
   else if(msg==="LOCKED"){ setStatus("Locked","off"); }
   else if(msg==="PASS-SET"){ alert("Password changed. It’s saved on the dongle."); }
+  else if(msg==="NAME-SET"){ alert("Name saved. Unplug and replug the dongle for the new name to show in Bluetooth."); }
 }
 
 function onDisconnect(){ rxChar=null; txChar=null; setStatus("Disconnected","off"); showTyping(false); }
@@ -170,6 +188,16 @@ $("changepw").onclick = async ()=>{
   const np = prompt("New dongle password:");
   if(np && rxChar){ await writeLine("%%SETPASS "+np+"\n"); if($("remember").checked) localStorage.setItem("wispr_pw",np); }
 };
+$("rename").onclick = async ()=>{
+  const nn = prompt("Name this dongle (e.g. your name or room), max 24 chars:");
+  if(nn && rxChar){ await writeLine("%%SETNAME "+nn.slice(0,24)+"\n"); }
+};
+// If we already have permission for a remembered dongle, offer one-tap connect.
+window.addEventListener("load", async ()=>{
+  if(localStorage.getItem("wispr_pw") && navigator.bluetooth && navigator.bluetooth.getDevices){
+    $("connect").textContent = "Connect & unlock";
+  }
+});
 </script>
 </body>
 </html>
