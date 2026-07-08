@@ -26,6 +26,8 @@
   .row{display:flex;gap:10px} .row>*{flex:1}
   .lang{display:flex;gap:8px}
   .lang button{font-size:22px;padding:10px} .lang button.act{outline:3px solid var(--brand);outline-offset:-3px}
+  .lang.big button{font-size:20px;font-weight:700;padding:20px 10px;background:#eee7df;color:#57534e}
+  .lang.big button.act{background:var(--brand);color:#fff;outline:none}
   .opts{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--mut)}
   .opts input{width:20px;height:20px}
   .hint{font-size:12px;color:var(--mut);line-height:1.5}
@@ -56,11 +58,11 @@
 
   <div class="card hide" id="typeCard">
     <div class="hint" style="margin:-2px 0 -2px">Connected to <b id="devname">your dongle</b></div>
-    <div class="lang">
-      <button id="it" class="act sec">🇮🇹 Italian</button>
-      <button id="us" class="sec">🇺🇸 English (US)</button>
-    </div>
     <textarea id="text" placeholder="Dictate here with Wispr Flow, then tap Send…" autocapitalize="sentences"></textarea>
+    <div class="lang big">
+      <button id="it" class="act sec">🇮🇹 Italiano</button>
+      <button id="us" class="sec">🇺🇸 English</button>
+    </div>
     <div class="opts">
       <input id="enter" type="checkbox">
       <label for="enter" style="font-weight:500">Press Enter after sending</label>
