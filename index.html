@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b6b5e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="WisprDongle">
+<title>WisprDongle</title>
+<link rel="manifest" href='data:application/json,{"name":"WisprDongle","short_name":"WisprDongle","display":"standalone","background_color":"%23f5f5f4","theme_color":"%230b6b5e","icons":[]}'>
+<style>
+  :root{--bg:#f5f5f4;--card:#fff;--ink:#1c1917;--mut:#78716c;--brand:#0b6b5e;--brand2:#0e8576;--danger:#b91c1c;--ok:#15803d;--line:#e7e5e4}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+  .wrap{max-width:520px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:14px;min-height:100vh}
+  header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  h1{font-size:20px;margin:0;font-weight:700;letter-spacing:-.01em}
+  .pill{font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px;background:#eee;color:var(--mut);white-space:nowrap}
+  .pill.on{background:#dcfce7;color:var(--ok)} .pill.off{background:#fee2e2;color:var(--danger)} .pill.wait{background:#fef9c3;color:#a16207}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:12px}
+  label{font-size:13px;font-weight:600;color:var(--mut)}
+  input[type=password],input[type=text]{width:100%;font-size:17px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fafaf9}
+  textarea{width:100%;min-height:150px;font-size:18px;line-height:1.4;padding:14px;border:1px solid var(--line);border-radius:12px;resize:vertical;background:#fafaf9}
+  button{font-size:17px;font-weight:600;padding:14px;border:0;border-radius:14px;background:var(--brand);color:#fff;width:100%}
+  button:active{background:var(--brand2)} button.sec{background:#e7e5e4;color:var(--ink)} button:disabled{opacity:.45}
+  .row{display:flex;gap:10px} .row>*{flex:1}
+  .lang{display:flex;gap:8px}
+  .lang button{font-size:22px;padding:10px} .lang button.act{outline:3px solid var(--brand);outline-offset:-3px}
+  .opts{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--mut)}
+  .opts input{width:20px;height:20px}
+  .hint{font-size:12px;color:var(--mut);line-height:1.5}
+  .send{font-size:19px;padding:18px}
+  footer{margin-top:auto;font-size:11px;color:#a8a29e;text-align:center;line-height:1.6}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🔌 WisprDongle</h1>
+    <span id="status" class="pill off">Disconnected</span>
+  </header>
+
+  <div class="card" id="connectCard">
+    <div>
+      <label for="pw">Unlock password</label>
+      <input id="pw" type="password" autocomplete="off" placeholder="password" inputmode="text">
+    </div>
+    <div class="opts">
+      <input id="remember" type="checkbox" checked>
+      <label for="remember" style="font-weight:500">Remember on this phone</label>
+    </div>
+    <button id="connect">Connect &amp; unlock</button>
+    <div class="hint">Turn on the dongle, then tap Connect and pick <b>WisprDongle</b>. It won’t type until the password is accepted.</div>
+  </div>
+
+  <div class="card hide" id="typeCard">
+    <div class="lang">
+      <button id="it" class="act sec">🇮🇹 Italian</button>
+      <button id="us" class="sec">🇺🇸 English (US)</button>
+    </div>
+    <textarea id="text" placeholder="Dictate here with Wispr Flow, then tap Send…" autocapitalize="sentences"></textarea>
+    <div class="opts">
+      <input id="enter" type="checkbox">
+      <label for="enter" style="font-weight:500">Press Enter after sending</label>
+    </div>
+    <button id="send" class="send">Send ⌨️</button>
+    <div class="row">
+      <button id="disconnect" class="sec">Disconnect</button>
+      <button id="changepw" class="sec">Change password</button>
+    </div>
+    <div class="hint">Tip: on the computer, set your keyboard layout to <b>Italian</b> so accents (à è é) come out right. Use the English button only on US-layout machines.</div>
+  </div>
+
+  <footer>
+    Types over Bluetooth into the connected computer.<br>Keep this phone locked when unattended.
+  </footer>
+</div>
+
+<script>
+const SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+const RX  = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // phone -> dongle (write)
+const TX  = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // dongle -> phone (notify)
+
+let device=null, rxChar=null, txChar=null, lang="IT";
+const $ = id => document.getElementById(id);
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+function setStatus(text, cls){ const p=$("status"); p.textContent=text; p.className="pill "+cls; }
+function showTyping(on){ $("connectCard").classList.toggle("hide",on); $("typeCard").classList.toggle("hide",!on); }
+
+// restore saved password
+if(localStorage.getItem("wispr_pw")){ $("pw").value=localStorage.getItem("wispr_pw"); }
+$("enter").checked = localStorage.getItem("wispr_enter")==="1";
+
+async function writeLine(str){
+  // chunk to 20-byte BLE payloads (safe under default ATT MTU); firmware
+  // buffers raw bytes and only acts on a complete '\n'-terminated line.
+  const data = enc.encode(str);
+  for(let i=0;i<data.length;i+=20){
+    await rxChar.writeValueWithResponse(data.slice(i,i+20));
+  }
+}
+
+async function connect(){
+  if(!navigator.bluetooth){ alert("This browser has no Web Bluetooth. Use Chrome on Android."); return; }
+  try{
+    setStatus("Connecting…","wait");
+    device = await navigator.bluetooth.requestDevice({
+      filters:[{namePrefix:"Wispr"}], optionalServices:[SVC]
+    });
+    device.addEventListener("gattserverdisconnected", onDisconnect);
+    const gatt = await device.gatt.connect();
+    const svc = await gatt.getPrimaryService(SVC);
+    rxChar = await svc.getCharacteristic(RX);
+    txChar = await svc.getCharacteristic(TX);
+    await txChar.startNotifications();
+    txChar.addEventListener("characteristicvaluechanged", onNotify);
+    setStatus("Unlocking…","wait");
+    const pw = $("pw").value;
+    if($("remember").checked){ localStorage.setItem("wispr_pw",pw); } else { localStorage.removeItem("wispr_pw"); }
+    await writeLine("%%PASS "+pw+"\n");
+    // status resolves via onNotify (OK/BAD). Fallback: show typing after 1s if no reply.
+    setTimeout(()=>{ if(device && device.gatt.connected && $("status").textContent==="Unlocking…"){ setStatus("Connected","on"); showTyping(true);} },1200);
+  }catch(e){
+    setStatus("Disconnected","off");
+    if(e.name!=="NotFoundError") alert("Connection failed: "+e.message);
+  }
+}
+
+function onNotify(ev){
+  const msg = dec.decode(ev.target.value).trim();
+  if(msg==="OK"){ setStatus("Unlocked ✓","on"); showTyping(true); }
+  else if(msg==="BAD"){ setStatus("Wrong password","off"); showTyping(false); localStorage.removeItem("wispr_pw"); alert("Wrong password. Try again."); }
+  else if(msg==="LOCKED"){ setStatus("Locked","off"); }
+  else if(msg==="PASS-SET"){ alert("Password changed. It’s saved on the dongle."); }
+}
+
+function onDisconnect(){ rxChar=null; txChar=null; setStatus("Disconnected","off"); showTyping(false); }
+
+async function send(){
+  if(!rxChar) return;
+  const t = $("text").value;
+  if(!t) return;
+  try{
+    await writeLine(t + "\n"); // trailing \n = end of message; firmware types Enter only if %%ENTER is set
+    $("text").value = "";      // clear the box on send (the whole point)
+    $("text").focus();
+  }catch(e){ alert("Send failed: "+e.message); }
+}
+
+async function setLang(l){
+  lang=l;
+  $("it").classList.toggle("act",l==="IT");
+  $("us").classList.toggle("act",l==="US");
+  if(rxChar){ await writeLine("%%"+l+"\n"); }
+}
+
+$("connect").onclick = connect;
+$("send").onclick = send;
+$("it").onclick = ()=>setLang("IT");
+$("us").onclick = ()=>setLang("US");
+$("disconnect").onclick = ()=>{ if(device&&device.gatt.connected) device.gatt.disconnect(); };
+$("enter").onchange = async e=>{
+  localStorage.setItem("wispr_enter", e.target.checked?"1":"0");
+  if(rxChar) await writeLine((e.target.checked?"%%ENTER":"%%NOENTER")+"\n");
+};
+$("changepw").onclick = async ()=>{
+  const np = prompt("New dongle password:");
+  if(np && rxChar){ await writeLine("%%SETPASS "+np+"\n"); if($("remember").checked) localStorage.setItem("wispr_pw",np); }
+};
+</script>
+</body>
+</html>
